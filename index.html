@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}body{margin:0;font:14px system-ui}[hidden]{display:none!important}</style>
+<title>Румми</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;600;700;800&family=Rubik+Mono+One&family=Onest:wght@400;500;600&display=swap">
+<style>
+/* Layout: walnut game table. Top: players strip. Middle: the shared table of sets (scrolls). Bottom: your rack and turn controls, pinned. Single deliberate look. */
+:root{
+  --wood-1:#4a3424; --wood-2:#36251a; --wood-3:#2a1c13; --ink:#f6eee2; --muted:#c9b8a3; --accent:#f0b03f; --accent-ink:#2a1a05;
+  --tile:#f8f1e1; --tile-edge:#dccdb0; --tile-shadow:rgba(0,0,0,.45);
+  --c0:#1d1d22; --c1:#c8202f; --c2:#1f5fbf; --c3:#e07410;
+  --ok:#5fc27a; --bad:#ff6b5b; --panel:rgba(20,13,8,.72); --line:rgba(255,235,205,.16);
+  --f-title:"Rubik Mono One", "Arial Black", sans-serif;
+  --f-num:"Rubik", system-ui, sans-serif;
+  --f-ui:"Onest", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --tw:46px; --tt:40px;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{margin:0;color:var(--ink);font-family:var(--f-ui);overflow:hidden;
+  background:
+    repeating-linear-gradient(92deg, rgba(255,255,255,.018) 0 2px, transparent 2px 9px),
+    repeating-linear-gradient(88deg, rgba(0,0,0,.05) 0 1px, transparent 1px 23px),
+    radial-gradient(ellipse 120% 80% at 50% 35%, var(--wood-1), var(--wood-2) 60%, var(--wood-3));
+  background-color:var(--wood-2);
+  -webkit-tap-highlight-color:transparent}
+#app{height:100%;display:flex;flex-direction:column;box-sizing:border-box;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+button{font:500 15px/1 var(--f-ui);color:var(--ink);background:rgba(255,240,215,.08);border:1px solid var(--line);border-radius:12px;padding:11px 16px;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:background .15s, transform .1s}
+button:hover{background:rgba(255,240,215,.15)}
+button:active{transform:scale(.97)}
+button:disabled{opacity:.38;cursor:default;transform:none}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button.primary:hover{background:#ffc35a}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select{font:500 15px var(--f-ui);color:var(--ink);background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+select option{background:#2a1c13}
+
+/* ---------- Tiles ---------- */
+.tile{width:var(--tw);height:calc(var(--tw) * 1.34);border-radius:calc(var(--tw) * .14);background:linear-gradient(180deg,#fffaf0,var(--tile) 60%,#efe4cc);
+  box-shadow:0 2px 0 var(--tile-edge), 0 3px 0 #bfae8c, 0 5px 8px var(--tile-shadow);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  flex:none;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;transition:transform .12s, box-shadow .12s, opacity .12s}
+.tile b{font:800 calc(var(--tw) * .56)/1 var(--f-num);letter-spacing:-.03em;margin-top:-6%}
+.tile i{position:absolute;bottom:13%;width:calc(var(--tw) * .2);height:calc(var(--tw) * .2);border-radius:50%;border:calc(var(--tw) * .035) solid currentColor;opacity:.75;box-sizing:border-box}
+.tile.c0{color:var(--c0)} .tile.c1{color:var(--c1)} .tile.c2{color:var(--c2)} .tile.c3{color:var(--c3)}
+.tile.joker svg{width:72%;height:72%}
+.tile.sel{transform:translateY(-6px);box-shadow:0 2px 0 var(--tile-edge), 0 3px 0 #bfae8c, 0 0 0 3px var(--accent), 0 10px 14px var(--tile-shadow)}
+.tile.mine::after{content:"";position:absolute;top:5%;left:50%;transform:translateX(-50%);width:30%;height:3px;border-radius:2px;background:var(--accent)}
+.tile.last{box-shadow:0 2px 0 var(--tile-edge), 0 3px 0 #bfae8c, 0 0 0 2px rgba(240,176,63,.75), 0 5px 10px var(--tile-shadow)}
+.tile.drawn{animation:drawn 1.2s ease 2}
+@keyframes drawn{50%{box-shadow:0 2px 0 var(--tile-edge),0 3px 0 #bfae8c,0 0 0 4px var(--accent),0 5px 8px var(--tile-shadow)}}
+.tile.ghosted{opacity:.25}
+.tile.locked{cursor:default}
+.ghost{position:fixed;z-index:100;pointer-events:none;display:flex;gap:3px;transform:translate(-50%,-60%) rotate(-3deg)}
+.ghost .tile{box-shadow:0 14px 26px rgba(0,0,0,.55)}
+
+/* ---------- Screens ---------- */
+.screen{flex:1;min-height:0;overflow:auto;padding-block:24px}
+.menu{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+.brand{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.brand h1{font:400 clamp(40px,9vw,72px)/.9 var(--f-title);margin:0;letter-spacing:-.02em;color:var(--ink)}
+.brand .row{display:flex;gap:6px}
+.brand p{margin:6px 0 0;color:var(--muted);font-size:16px;max-width:52ch;line-height:1.4}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card h2{margin:0;font:600 20px var(--f-ui)}
+.card p{margin:0;color:var(--muted);line-height:1.45;font-size:14px}
+.seat{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:8px}
+.seats{display:flex;flex-direction:column;gap:8px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.lbl{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.code{font:400 30px/1 var(--f-title);letter-spacing:.06em;color:var(--accent)}
+.linkbox{display:flex;gap:8px;align-items:center;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:10px;padding:8px 8px 8px 12px;min-width:0}
+.linkbox span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--muted);user-select:all;-webkit-user-select:all}
+.plist{display:flex;flex-direction:column;gap:6px}
+.pl{display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.22);border-radius:10px;padding:10px 12px;font-size:15px}
+.pl small{color:var(--muted)}
+.note{font-size:13px;color:var(--muted);line-height:1.45}
+.err{color:var(--bad)}
+
+/* ---------- Game ---------- */
+.top{display:flex;align-items:center;gap:10px;padding-block:10px 6px;min-width:0}
+.top .logo{font:400 18px var(--f-title);letter-spacing:-.02em}
+.players{display:flex;gap:6px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+.players::-webkit-scrollbar{display:none}
+.pchip{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:999px;padding:5px 12px 5px 6px;white-space:nowrap;font-size:14px;flex:none}
+.pchip .av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--f-num);background:#6b4f3a;color:var(--ink)}
+.pchip b{font:600 14px var(--f-num);font-variant-numeric:tabular-nums}
+.pchip small{color:var(--muted);font-size:12px}
+.pchip.turn{border-color:var(--accent);background:rgba(240,176,63,.16)}
+.pchip.turn .av{background:var(--accent);color:var(--accent-ink)}
+.pchip.off{opacity:.5}
+.pool{font-size:13px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.iconbtn{padding:9px 11px;border-radius:10px}
+
+.zoom{display:flex;gap:4px;flex:none}
+.zoom button{width:36px;height:36px;padding:0;border-radius:9px;font:600 18px var(--f-num)}
+.tablewrap{flex:1;min-height:0;overflow:auto;border-radius:16px;background:rgba(0,0,0,.16);box-shadow:inset 0 2px 18px rgba(0,0,0,.35);position:relative}
+#table{--tw:var(--tt);display:flex;flex-wrap:wrap;align-content:flex-start;gap:14px 18px;padding:14px;min-height:100%;box-sizing:border-box}
+.set{display:flex;gap:3px;padding:6px;border-radius:12px;border:1.5px dashed transparent;min-height:calc(var(--tw) * 1.34);position:relative}
+.set.bad{border-color:var(--bad);background:rgba(255,107,91,.08)}
+.set.good.fresh{border-color:rgba(95,194,122,.6)}
+.set.hover,.newset.hover,.rackzone.hover{background:rgba(240,176,63,.14);border-color:var(--accent)}
+.set .plus{display:none;width:calc(var(--tw) * .7);border-radius:8px;border:1.5px dashed var(--accent);color:var(--accent);font:600 20px var(--f-num);align-items:center;justify-content:center;cursor:pointer;background:none;padding:0}
+.picking .set .plus{display:flex}
+.newset{display:flex;align-items:center;justify-content:center;gap:8px;min-width:calc(var(--tw) * 3.2);min-height:calc(var(--tw) * 1.34 + 12px);border:1.5px dashed var(--line);border-radius:12px;color:var(--muted);font-size:14px;padding:0 14px;cursor:pointer;box-sizing:border-box}
+.empty-hint{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:15px;pointer-events:none;text-align:center;padding:20px}
+
+.bottom{padding-block:8px 12px;display:flex;flex-direction:column;gap:8px}
+.bottom > *{flex-shrink:0}
+.status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-height:40px}
+.status .msg{flex:1;min-width:180px;font-size:15px;line-height:1.35}
+.status .msg b{color:var(--accent)}
+.meter{display:inline-block;width:90px;height:7px;border-radius:4px;background:rgba(255,255,255,.12);vertical-align:middle;margin-left:6px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.rackzone{background:linear-gradient(180deg,#7a5639,#5c3f29);border-radius:14px;padding:10px;box-shadow:inset 0 2px 0 rgba(255,220,180,.25), 0 8px 18px rgba(0,0,0,.4);border:1.5px solid transparent;position:relative}
+#rack{display:flex;flex-wrap:wrap;gap:5px;min-height:calc(var(--tw) * 1.34);max-height:calc(var(--tw) * 1.34 * 2 + 18px);overflow-y:auto;padding-bottom:4px}
+.rackbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:13px;color:#f2dcc0}
+.rackbar .sorts{display:flex;gap:6px}
+.rackbar button{padding:6px 10px;font-size:13px;border-radius:8px;background:rgba(0,0,0,.2)}
+.rackbar button[aria-pressed="true"]{background:rgba(0,0,0,.45);border-color:var(--accent)}
+
+.toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top, 0px) + 70px);transform:translateX(-50%);z-index:200;background:#1c120b;border:1px solid var(--accent);color:var(--ink);
+  padding:10px 16px;border-radius:12px;font-size:14px;max-width:calc(100% - 32px);box-shadow:0 10px 30px rgba(0,0,0,.5);animation:tin .2s ease}
+@keyframes tin{from{opacity:0;transform:translate(-50%,-8px)}}
+.overlay{position:fixed;inset:0;z-index:150;display:grid;place-items:center;background:rgba(15,9,5,.72);padding:16px;backdrop-filter:blur(3px)}
+.modal{background:#2b1d13;border:1px solid var(--line);border-radius:20px;padding:24px;width:100%;max-width:440px;box-shadow:0 30px 70px rgba(0,0,0,.6);max-height:100%;overflow:auto;box-sizing:border-box}
+.modal h2{font:600 24px var(--f-ui);margin:0 0 8px}
+.modal p,.modal li{color:var(--muted);line-height:1.5;font-size:15px}
+.modal ul{padding-left:20px;margin:8px 0}
+.modal table{width:100%;border-collapse:collapse;margin:10px 0;font-variant-numeric:tabular-nums}
+.modal td,.modal th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;font-size:15px}
+.modal th{font-size:12px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.06em}
+.modal td.num{text-align:right}
+.modal .win{color:var(--accent);font-weight:600}
+.modal .row{justify-content:flex-end;margin-top:14px}
+.ex{display:flex;gap:3px;margin:6px 0 10px;--tw:30px}
+.ex .tile{cursor:default}
+
+@media (max-width:640px){
+  :root{--tw:min(10.6vw, 46px)}
+  #rack{max-height:calc(var(--tw) * 1.34 * 3 + 16px)}
+  .meter{width:70px}
+  .pool{font-size:12px}
+  .zoom button{width:32px;height:32px}
+  .set .plus{width:30px}
+  .screen{padding-block:14px}
+  .top{padding-block:8px 4px;gap:6px}
+  .top .logo{display:none}
+  .pchip{padding:4px 10px 4px 4px;font-size:13px}
+  .pchip .av{width:22px;height:22px;font-size:11px}
+  #table{gap:10px 10px;padding:10px}
+  .set{padding:4px;gap:2px}
+  .status .msg{font-size:14px;min-width:0;flex-basis:100%}
+  .status{min-height:0;gap:6px}
+  .actions{width:100%}
+  .actions button{flex:1 1 0;padding:12px 6px;font-size:14px}
+  .rackzone{padding:8px}
+  #rack{gap:4px}
+  .seat{grid-template-columns:minmax(0,1fr) 130px}
+  .pchip small,.pchip .you{display:none}
+  .rackbar .log{display:none}
+}
+@media (orientation:landscape) and (max-height:540px){
+  :root{--tw:min(4.9vw, 42px)}
+  .pchip small,.pchip .you,.rackbar .log{display:none}
+  .status{min-height:0;gap:6px}
+  #app.game{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,44%);grid-template-rows:auto minmax(0,1fr);column-gap:12px}
+  #app.game .top{grid-column:1 / -1;padding-block:6px 4px}
+  #app.game .tablewrap{grid-row:2;min-height:0}
+  #app.game .bottom{grid-row:2;grid-column:2;overflow:auto;padding-block:0 8px}
+  #app.game #rack{max-height:none}
+  .status .msg{flex-basis:100%;font-size:14px}
+  .actions{width:100%}
+  .actions button{flex:1 1 0;padding:11px 6px}
+  .top .logo{display:none}
+}
+@media (prefers-reduced-motion:reduce){.tile,.toast{transition:none;animation:none}}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+(() => {
+// ======================= Tiles & rules =======================
+const COLORS = ['чёрный', 'красный', 'синий', 'оранжевый'];
+const T = [];
+for (let k = 0; k < 2; k++) for (let c = 0; c < 4; c++) for (let n = 1; n <= 13; n++) T.push({ id: T.length, c, n });
+T.push({ id: 104, c: -1, n: 0 }, { id: 105, c: -1, n: 0 });
+const isJ = id => T[id].c < 0;
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const rackValue = ids => ids.reduce((s, id) => s + (isJ(id) ? 30 : T[id].n), 0);
+
+// Returns {type, pts, order} for a valid set, otherwise null
+function analyze(ids) {
+  const L = ids.length;
+  if (L < 3) return null;
+  const nj = ids.filter(id => !isJ(id)), jk = ids.filter(isJ);
+  if (!nj.length) return null;
+  let best = null;
+  // group: same number, different colours, 3-4 tiles
+  if (L <= 4) {
+    const n = T[nj[0]].n;
+    if (nj.every(id => T[id].n === n) && new Set(nj.map(id => T[id].c)).size === nj.length)
+      best = { type: 'group', pts: n * L, order: [...nj.slice().sort((a, b) => T[a].c - T[b].c), ...jk] };
+  }
+  // run: same colour, consecutive numbers, jokers fill gaps
+  if (L <= 13) {
+    const c = T[nj[0]].c, nums = nj.map(id => T[id].n);
+    if (nj.every(id => T[id].c === c) && new Set(nums).size === nums.length) {
+      const mn = Math.min(...nums), mx = Math.max(...nums);
+      if (mx - mn + 1 <= L) {
+        // keep the player's arrangement when it is already a consistent run
+        let s = null;
+        const k0 = ids.findIndex(id => !isJ(id)), s0 = T[ids[k0]].n - k0;
+        if (s0 >= 1 && s0 + L - 1 <= 13 && ids.every((id, k) => isJ(id) || T[id].n === s0 + k)) s = s0;
+        let order;
+        if (s !== null) order = ids.slice();
+        else {
+          s = Math.min(mn, 14 - L);
+          const pool = jk.slice();
+          order = [];
+          for (let k = 0; k < L; k++) { const t = nj.find(id => T[id].n === s + k); order.push(t !== undefined ? t : pool.pop()); }
+        }
+        let pts = 0; for (let k = 0; k < L; k++) pts += s + k;
+        if (!best || pts > best.pts) best = { type: 'run', pts, order };
+      }
+    }
+  }
+  return best;
+}
+const normalize = ids => { const a = analyze(ids); return a ? a.order : ids; };
+const sig = ids => ids.slice().sort((a, b) => a - b).join(',');
+
+// ======================= Engine (runs on the host / this device) =======================
+let G = null;
+function newGame(seats, keepScores) {
+  const ids = shuffle([...Array(106).keys()]);
+  const players = seats.map((s, i) => ({ name: s.name, kind: s.kind, level: s.level || 1, token: s.token || null,
+    rack: ids.splice(0, 14), melded: false, connected: s.connected !== false, score: keepScores && G && G.players[i] ? G.players[i].score : 0 }));
+  G = { players, table: [], pool: ids, turn: Math.floor(Math.random() * players.length), turnId: 1, over: null, passes: 0, last: [], drawn: {}, log: ['Партия началась. Фишки розданы по 14.'], round: keepScores && G ? G.round + 1 : 1 };
+}
+function validate(pi, table, rack) {
+  const p = G.players[pi];
+  const before = [...G.table.flat(), ...p.rack], after = [...table.flat(), ...rack];
+  if (before.length !== after.length || sig(before) !== sig(after)) return 'Фишки не сходятся. Нажмите «Вернуть всё» и попробуйте ещё раз.';
+  const onTable = new Set(table.flat());
+  if (G.table.flat().some(id => !onTable.has(id))) return 'Фишки со стола нельзя забирать к себе.';
+  const placed = p.rack.filter(id => !rack.includes(id));
+  if (!placed.length) return 'Выложите хотя бы одну фишку или возьмите фишку из банка.';
+  for (const s of table) if (!analyze(s)) return 'На столе есть неправильный ряд (обведён красным).';
+  if (!p.melded) {
+    const orig = new Set(G.table.map(sig)), origTiles = new Set(G.table.flat());
+    let pts = 0;
+    for (const s of table) {
+      if (s.some(id => origTiles.has(id))) { if (!orig.has(sig(s))) return 'До первого выхода нельзя менять ряды на столе.'; }
+      else pts += analyze(s).pts;
+    }
+    if (pts < 30) return `Для первого выхода нужно не меньше 30 очков из своих фишек. Сейчас ${pts}.`;
+  }
+  return null;
+}
+function doCommit(pi, table, rack) {
+  if (G.over || G.turn !== pi) return 'Сейчас не ваш ход.';
+  table = table.filter(s => s.length).map(normalize);
+  const err = validate(pi, table, rack);
+  if (err) return err;
+  const p = G.players[pi];
+  const placed = p.rack.filter(id => !rack.includes(id));
+  G.table = table; p.rack = rack; p.melded = true; G.last = placed; G.drawn[pi] = null; G.passes = 0;
+  logMsg(`${p.name}: выложил${p.kind === 'bot' ? '(а)' : ''} ${placed.length} ${plural(placed.length, 'фишку', 'фишки', 'фишек')}.`);
+  if (!rack.length) finish(pi); else nextTurn();
+  return null;
+}
+function doDraw(pi) {
+  if (G.over || G.turn !== pi) return 'Сейчас не ваш ход.';
+  const p = G.players[pi];
+  if (G.pool.length) { const id = G.pool.pop(); p.rack.push(id); G.drawn[pi] = id; G.passes = 0; logMsg(`${p.name}: взял(а) фишку из банка.`); }
+  else { G.passes++; logMsg(`${p.name}: банк пуст, пропуск хода.`); if (G.passes >= G.players.length) { finish(null); return null; } }
+  G.last = [];
+  nextTurn();
+  return null;
+}
+function nextTurn() { G.turn = (G.turn + 1) % G.players.length; G.turnId++; }
+function finish(winner) {
+  const pen = G.players.map(p => rackValue(p.rack));
+  if (winner === null) { const m = Math.min(...pen); winner = pen.indexOf(m); }
+  const gain = pen.reduce((s, v, i) => i === winner ? s : s + v, 0) - (G.players[winner].rack.length ? pen[winner] : 0);
+  const rows = G.players.map((p, i) => ({ name: p.name, left: p.rack.length, pen: pen[i], delta: i === winner ? gain : -pen[i] }));
+  G.players.forEach((p, i) => p.score += rows[i].delta);
+  rows.forEach((r, i) => r.total = G.players[i].score);
+  G.over = { winner, rows, blocked: G.players[winner].rack.length > 0 };
+  logMsg(`${G.players[winner].name} побеждает!`);
+  G.turnId++;
+}
+function logMsg(m) { G.log.push(m); if (G.log.length > 30) G.log.shift(); }
+const plural = (n, a, b, c) => { const m = n % 10, h = n % 100; return m === 1 && h !== 11 ? a : m >= 2 && m <= 4 && (h < 12 || h > 14) ? b : c; };
+
+// ======================= Computer player =======================
+function botPlan(pi) {
+  const p = G.players[pi], level = p.level;
+  const rack = p.rack.slice();
+  const byKey = {}, jokers = rack.filter(isJ);
+  rack.filter(id => !isJ(id)).forEach(id => { const k = T[id].c * 13 + T[id].n - 1; (byKey[k] ||= []).push(id); });
+  const have = k => (byKey[k] || []).length;
+  const J = Math.min(2, jokers.length);
+  const cands = [];
+  for (let n = 1; n <= 13; n++) {
+    const cs = [0, 1, 2, 3].filter(c => have(c * 13 + n - 1));
+    const combos = [];
+    for (let m = 1; m < 16; m++) { const sub = cs.filter((_, i) => m >> i & 1); if (sub.length && (m >> cs.length) === 0) combos.push(sub); }
+    combos.forEach(sub => {
+      for (let j = 0; j <= J; j++) { const L = sub.length + j; if (L >= 3 && L <= 4 && (j === 0 || sub.length >= 1)) cands.push({ keys: sub.map(c => c * 13 + n - 1), j, size: L, pts: n * L }); }
+    });
+  }
+  for (let c = 0; c < 4; c++) for (let s = 1; s <= 11; s++) {
+    let miss = 0, pts = 0;
+    const keys = [];
+    for (let e = s; e <= 13; e++) {
+      const k = c * 13 + e - 1;
+      if (have(k)) keys.push(k); else miss++;
+      pts += e;
+      if (miss > J) break;
+      if (e - s + 1 >= 3 && keys.length >= 1) cands.push({ keys: keys.slice(), j: miss, size: e - s + 1, pts });
+    }
+  }
+  cands.sort((a, b) => b.size - a.size || b.pts - a.pts);
+  const cnt = {}; Object.keys(byKey).forEach(k => cnt[k] = byKey[k].length);
+  let best = { score: -1, pick: [] }, nodes = 0, jl = jokers.length;
+  const scoreOf = (pick) => { const tiles = pick.reduce((s, c) => s + c.size, 0), pts = pick.reduce((s, c) => s + c.pts, 0), jUsed = pick.reduce((s, c) => s + c.j, 0);
+    if (!p.melded) return pts >= 30 ? 1000 + pts - jUsed * 8 : -1;
+    return tiles * 100 + pts - jUsed * 120; };
+  (function dfs(i, pick) {
+    if (++nodes > 25000) return;
+    const sc = scoreOf(pick); if (sc > best.score) best = { score: sc, pick: pick.slice() };
+    if (level === 0 && pick.length >= 2) return;
+    for (let k = i; k < cands.length; k++) {
+      const cd = cands[k];
+      if (cd.j > jl || cd.keys.some(key => !cnt[key])) continue;
+      cd.keys.forEach(key => cnt[key]--); jl -= cd.j; pick.push(cd);
+      dfs(k + 1, pick);
+      pick.pop(); jl += cd.j; cd.keys.forEach(key => cnt[key]++);
+      if (nodes > 25000) return;
+    }
+  })(0, []);
+  const pool = {}; Object.keys(byKey).forEach(k => pool[k] = byKey[k].slice());
+  const jpool = jokers.slice();
+  let table = G.table.map(s => s.slice());
+  let left = rack.slice();
+  const take = id => { left.splice(left.indexOf(id), 1); return id; };
+  if (best.score > 0) best.pick.forEach(cd => {
+    const ids = cd.keys.map(k => take(pool[k].pop()));
+    for (let j = 0; j < cd.j; j++) ids.push(take(jpool.pop()));
+    table.push(normalize(ids));
+  });
+  // lay off single tiles onto the table, and split runs to fit a duplicate (experienced level)
+  if (p.melded && level >= 1) {
+    let changed = true, guard = 0;
+    while (changed && guard++ < 40) {
+      changed = false;
+      for (const id of left.slice().sort((a, b) => isJ(a) - isJ(b))) {
+        if (isJ(id) && left.length > 1) continue;
+        for (let si = 0; si < table.length && !changed; si++) {
+          for (const tryIds of [[...table[si], id], [id, ...table[si]]]) {
+            if (analyze(tryIds)) { table[si] = normalize(tryIds); take(id); changed = true; break; }
+          }
+          if (!changed && !isJ(id)) {
+            const s = table[si], a = analyze(s);
+            if (a && a.type === 'run' && !s.some(isJ)) {
+              const k = s.findIndex(x => T[x].n === T[id].n && T[x].c === T[id].c);
+              if (k >= 2 && s.length - k >= 3) {
+                const L = s.slice(0, k + 1), R = [id, ...s.slice(k + 1)];
+                if (analyze(L) && analyze(R)) { table.splice(si, 1, L, R); take(id); changed = true; }
+              }
+            }
+          }
+        }
+        if (changed) break;
+      }
+    }
+  }
+  if (left.length === rack.length) return null;
+  return { table, rack: left };
+}
+
+// ======================= Session (local / host / guest) =======================
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+let S = { mode: null, me: 0, view: null, preview: null, curtain: false };
+let W = null, sel = new Set(), sortMode = store.get('rummy-sort') || 'color';
+let net = null; // online plumbing
+const myName = () => store.get('rummy-name') || '';
+
+function viewFor(pi) {
+  return {
+    table: G.table, rack: G.players[pi].rack.slice(), melded: G.players[pi].melded, you: pi,
+    players: G.players.map(p => ({ name: p.name, count: p.rack.length, melded: p.melded, kind: p.kind, connected: p.connected, score: p.score })),
+    turn: G.turn, turnId: G.turnId, pool: G.pool.length, over: G.over, log: G.log.slice(-3), last: G.last, drawn: G.drawn[pi] ?? null, round: G.round,
+  };
+}
+function humansHere() { return G.players.map((p, i) => p.kind === 'local' || p.kind === 'you' ? i : -1).filter(i => i >= 0); }
+function refreshLocal() {
+  // decide whose rack this device shows
+  const hs = humansHere();
+  const cur = G.players[G.turn];
+  if (S.mode === 'local') {
+    if (!G.over && (cur.kind === 'local' || cur.kind === 'you') && S.me !== G.turn) {
+      if (hs.length > 1) S.curtain = true; else S.me = G.turn;
+    }
+    if (!hs.includes(S.me)) S.me = hs[0] ?? 0;
+  }
+  S.view = viewFor(S.me);
+}
+function afterChange() {
+  if (S.mode === 'local') store.set('rummy-local', JSON.stringify({ G, me: S.me }));
+  if (S.mode === 'host') broadcast();
+  refreshLocal();
+  S.preview = null;
+  render();
+  scheduleBot();
+}
+let botTimer = 0;
+function scheduleBot() {
+  clearTimeout(botTimer);
+  if (!G || G.over || S.mode === 'guest') return;
+  const p = G.players[G.turn];
+  if (p.kind !== 'bot') return;
+  botTimer = setTimeout(() => {
+    const pi = G.turn;
+    if (G.over || G.players[pi].kind !== 'bot') return;
+    const plan = botPlan(pi);
+    if (!plan || doCommit(pi, plan.table, plan.rack)) doDraw(pi);
+    afterChange();
+  }, 900 + Math.random() * 700);
+}
+// Actions from this device
+function act(type, payload) {
+  if (S.mode === 'guest') { net.send({ t: type, ...payload }); return; }
+  const err = type === 'commit' ? doCommit(S.me, payload.table, payload.rack) : doDraw(S.me);
+  if (err) { toast(err); return; }
+  W = null; sel.clear();
+  afterChange();
+}
+
+// ======================= Online (PeerJS, peer-to-peer) =======================
+function loadPeer() {
+  return new Promise((res, rej) => {
+    if (window.Peer) return res();
+    if (typeof RTCPeerConnection === 'undefined') return rej(new Error('nortc'));
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
+    s.onload = () => res(); s.onerror = () => rej(new Error('load'));
+    document.head.appendChild(s);
+  });
+}
+const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const genCode = () => [...Array(5)].map(() => CODE_ABC[Math.floor(Math.random() * CODE_ABC.length)]).join('');
+const peerId = code => 'rummy-ru-' + code.toLowerCase();
+const myToken = () => { let t = store.get('rummy-token'); if (!t) { t = Math.random().toString(36).slice(2) + Date.now().toString(36); store.set('rummy-token', t); } return t; };
+function netError(e) {
+  if (e && e.message === 'nortc') return 'Онлайн-игра работает в версии игры, открытой по обычной ссылке (например, на GitHub). В этом окне соединение между устройствами недоступно.';
+  if (e && e.message === 'load') return 'Не удалось загрузить модуль связи. Проверьте интернет. Если игра открыта внутри Claude, онлайн работает только в версии на GitHub.';
+  const t = e && e.type;
+  if (t === 'peer-unavailable') return 'Комната не найдена. Проверьте код или попросите новую ссылку.';
+  if (t === 'unavailable-id') return 'Такой код уже занят, попробуйте ещё раз.';
+  if (t === 'network' || t === 'server-error' || t === 'socket-error') return 'Нет связи с сервисом соединения. Проверьте интернет и попробуйте ещё раз.';
+  if (t === 'browser-incompatible' || t === 'webrtc') return 'Этот браузер не поддерживает игру по сети.';
+  return 'Не удалось соединиться. Попробуйте ещё раз. Если игра открыта внутри Claude, онлайн работает только в версии на GitHub.';
+}
+async function hostRoom(name) {
+  await loadPeer();
+  const code = genCode();
+  const peer = new Peer(peerId(code), { debug: 0 });
+  net = { role: 'host', peer, code, conns: new Map(), lobby: [{ name, kind: 'you', token: myToken(), connected: true }] };
+  return new Promise((res, rej) => {
+    let opened = false;
+    const timer = setTimeout(() => { if (!opened) rej({ type: 'network' }); }, 15000);
+    peer.on('open', () => { opened = true; clearTimeout(timer); res(code); });
+    peer.on('error', e => { if (!net || net.peer !== peer) return; if (!opened) { clearTimeout(timer); rej(e); } else toast(netError(e)); });
+    peer.on('connection', conn => {
+      conn.on('data', m => onHostMsg(conn, m));
+      conn.on('close', () => onGuestGone(conn));
+      conn.on('error', () => onGuestGone(conn));
+    });
+    peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
+  });
+}
+function onHostMsg(conn, m) {
+  if (!m || typeof m !== 'object') return;
+  if (m.t === 'hello') {
+    const name = String(m.name || 'Гость').slice(0, 20), token = String(m.token || '').slice(0, 40);
+    if (G) {
+      const pi = G.players.findIndex(p => p.token === token && p.kind === 'remote');
+      if (pi < 0) { conn.send({ t: 'reject', msg: 'Партия уже идёт. Попросите хозяина начать новую.' }); setTimeout(() => conn.close(), 500); return; }
+      net.conns.set(conn, pi); G.players[pi].connected = true; logMsg(`${G.players[pi].name} снова в игре.`);
+      afterChange(); return;
+    }
+    let seat = net.lobby.find(s => s.token === token);
+    if (!seat) {
+      if (net.lobby.length >= 4) { conn.send({ t: 'reject', msg: 'За столом уже 4 игрока.' }); setTimeout(() => conn.close(), 500); return; }
+      seat = { name, kind: 'remote', token, connected: true }; net.lobby.push(seat);
+    }
+    seat.connected = true; seat.name = name; seat.conn = conn;
+    net.conns.set(conn, seat);
+    broadcastLobby(); render();
+    return;
+  }
+  if (!G) return;
+  const pi = net.conns.get(conn);
+  if (typeof pi !== 'number') return;
+  if (m.t === 'commit' && Array.isArray(m.table) && Array.isArray(m.rack)) {
+    const clean = a => a.filter(x => Number.isInteger(x) && x >= 0 && x < 106);
+    const err = doCommit(pi, m.table.filter(Array.isArray).map(clean), clean(m.rack));
+    if (err) { conn.send({ t: 'error', msg: err }); return; }
+    afterChange();
+  } else if (m.t === 'draw') {
+    const err = doDraw(pi); if (err) { conn.send({ t: 'error', msg: err }); return; }
+    afterChange();
+  } else if (m.t === 'preview' && G.turn === pi && Array.isArray(m.table)) {
+    S.preview = { turnId: G.turnId, table: m.table };
+    for (const [c, idx] of net.conns) if (c !== conn && typeof idx === 'number') safeSend(c, { t: 'preview', turnId: G.turnId, table: m.table });
+    render();
+  }
+}
+function onGuestGone(conn) {
+  if (!net || net.role !== 'host') return;
+  const v = net.conns.get(conn);
+  net.conns.delete(conn);
+  if (!G && v && typeof v === 'object') { net.lobby = net.lobby.filter(s => s !== v); broadcastLobby(); render(); return; }
+  if (G && typeof v === 'number') { G.players[v].connected = false; logMsg(`${G.players[v].name} отключился.`); afterChange(); }
+}
+const safeSend = (c, m) => { try { if (c.open) c.send(m); } catch (e) {} };
+function broadcastLobby() { if (!net) return; const list = net.lobby.map(s => ({ name: s.name, kind: s.kind, level: s.level })); for (const [c] of net.conns) safeSend(c, { t: 'lobby', list, code: net.code }); }
+function broadcast() { if (!net || !G) return; for (const [c, pi] of net.conns) if (typeof pi === 'number') safeSend(c, { t: 'view', view: viewFor(pi) }); }
+function sendPreview() {
+  if (!W || !net) return;
+  clearTimeout(sendPreview.t);
+  sendPreview.t = setTimeout(() => {
+    if (!W) return;
+    if (net.role === 'guest') net.send({ t: 'preview', table: W.table });
+    else for (const [c, pi] of net.conns) if (typeof pi === 'number') safeSend(c, { t: 'preview', turnId: G.turnId, table: W.table });
+  }, 250);
+}
+async function joinRoom(code, name) {
+  await loadPeer();
+  const peer = new Peer({ debug: 0 });
+  return new Promise((res, rej) => {
+    let opened = false;
+    peer.on('error', e => { if (!opened) rej(e); else toast(netError(e)); });
+    peer.on('open', () => {
+      const conn = peer.connect(peerId(code), { reliable: true });
+      net = { role: 'guest', peer, conn, code, list: [], send: m => safeSend(conn, m) };
+      const timer = setTimeout(() => { if (!opened) rej({ type: 'peer-unavailable' }); }, 12000);
+      conn.on('open', () => { opened = true; clearTimeout(timer); conn.send({ t: 'hello', name, token: myToken() }); res(); });
+      conn.on('data', onGuestMsg);
+      conn.on('close', () => { if (S.mode === 'guest' || S.mode === 'guest-lobby') { S.lost = true; render(); } });
+    });
+  });
+}
+function onGuestMsg(m) {
+  if (!m || typeof m !== 'object') return;
+  if (m.t === 'lobby') { net.list = m.list; if (S.mode !== 'guest') { S.mode = 'guest-lobby'; } render(); }
+  else if (m.t === 'view') {
+    const v = m.view, prev = S.view;
+    S.mode = 'guest'; S.view = v; S.me = v.you;
+    if (!prev || prev.turnId !== v.turnId) { S.preview = null; if (W && W.turnId !== v.turnId) { W = null; sel.clear(); } }
+    render();
+  }
+  else if (m.t === 'preview') { S.preview = { turnId: m.turnId, table: m.table }; render(); }
+  else if (m.t === 'error') toast(m.msg);
+  else if (m.t === 'reject') { toast(m.msg); leaveToMenu(); }
+}
+function leaveToMenu() {
+  clearTimeout(botTimer);
+  try { net?.peer?.destroy(); } catch (e) {}
+  net = null; G = S.mode === 'local' ? G : null;
+  S = { mode: null, me: 0, view: null, preview: null, curtain: false };
+  W = null; sel.clear();
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  render();
+}
+
+// ======================= Working copy for my turn =======================
+const deep = t => t.map(s => s.slice());
+function myTurn() { const v = S.view; return v && !v.over && v.turn === S.me && !S.curtain; }
+function ensureW() {
+  const v = S.view;
+  if (!myTurn()) { W = null; return; }
+  if (!W || W.turnId !== v.turnId) { W = { turnId: v.turnId, table: deep(v.table), rack: v.rack.slice(), baseTable: deep(v.table), baseRack: v.rack.slice() }; sel.clear(); }
+}
+const changed = () => W && (W.rack.length !== W.baseRack.length || sig(W.table.flat()) !== sig(W.baseTable.flat()) || W.table.length !== W.baseTable.length || W.table.some((s, i) => !W.baseTable[i] || s.join() !== W.baseTable[i].join()));
+function originalSetRefs() { const tiles = new Set(W.baseTable.flat()); return s => s.some(id => tiles.has(id)); }
+function moveTiles(ids, target) {
+  if (!W) return;
+  const v = S.view, fromRack = new Set(W.baseRack), isOrig = originalSetRefs();
+  if (!v.melded && ids.some(id => !fromRack.has(id))) { toast('До первого выхода (30 очков) фишки на столе трогать нельзя.'); return; }
+  if (target.kind === 'rack' && ids.some(id => !fromRack.has(id))) { toast('Фишки со стола нельзя забирать к себе.'); return; }
+  let tgtSet = target.kind === 'set' ? W.table[target.s] : null;
+  if (tgtSet && !v.melded && isOrig(tgtSet)) { toast('До первого выхода можно выкладывать только новые ряды.'); return; }
+  // remember insertion neighbour so index survives removal
+  const anchor = tgtSet && target.index < tgtSet.length ? tgtSet[target.index] : null;
+  ids.forEach(id => {
+    const ri = W.rack.indexOf(id); if (ri >= 0) W.rack.splice(ri, 1);
+    W.table.forEach(s => { const k = s.indexOf(id); if (k >= 0) s.splice(k, 1); });
+  });
+  if (target.kind === 'rack') W.rack.push(...ids);
+  else if (target.kind === 'new') W.table.push(ids.slice());
+  else {
+    let k = anchor !== null && !ids.includes(anchor) ? tgtSet.indexOf(anchor) : tgtSet.length;
+    if (k < 0) k = tgtSet.length;
+    tgtSet.splice(k, 0, ...ids);
+  }
+  W.table = W.table.filter(s => s.length).map(s => analyze(s) ? normalize(s) : s);
+  sel.clear();
+  render(); sendPreview();
+}
+
+// ======================= Rendering =======================
+const app = document.getElementById('app');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const JOKER = `<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="15" fill="none" stroke="var(--c1)" stroke-width="3"/><circle cx="14.5" cy="16.5" r="2.4" fill="var(--c0)"/><circle cx="25.5" cy="16.5" r="2.4" fill="var(--c0)"/><path d="M12 23 Q20 31 28 23" fill="none" stroke="var(--c1)" stroke-width="3" stroke-linecap="round"/><path d="M8 9 L13 4 L16 9 L20 3 L24 9 L27 4 L32 9" fill="none" stroke="var(--c3)" stroke-width="2.4" stroke-linejoin="round"/></svg>`;
+function tileHTML(id, cls = '') {
+  const t = T[id];
+  const label = t.c < 0 ? 'джокер' : `${t.n} ${COLORS[t.c]}`;
+  if (t.c < 0) return `<div class="tile joker ${cls}" data-id="${id}" aria-label="${label}">${JOKER}</div>`;
+  return `<div class="tile c${t.c} ${cls}" data-id="${id}" aria-label="${label}"><b>${t.n}</b><i></i></div>`;
+}
+function sortRack(r) {
+  const k = id => isJ(id) ? 999 : sortMode === 'color' ? T[id].c * 20 + T[id].n : T[id].n * 5 + T[id].c;
+  return r.slice().sort((a, b) => k(a) - k(b) || a - b);
+}
+let lastScreen = '';
+// table tile size: fits the screen by default, the player can zoom it
+let tableSize = +store.get('rummy-zoom') || 0;
+function applyZoom() {
+  const auto = Math.round(Math.min(44, Math.max(28, Math.min(innerWidth, innerHeight * 1.6) * .085)));
+  document.documentElement.style.setProperty('--tt', (tableSize || auto) + 'px');
+  if (!tableSize) tableSize = auto;
+}
+applyZoom();
+addEventListener('resize', () => { if (!store.get('rummy-zoom')) { tableSize = 0; applyZoom(); } });
+function render() {
+  const scr = S.mode === 'local' || S.mode === 'host' && G || S.mode === 'guest' ? 'game' : S.mode === 'host-lobby' || S.mode === 'guest-lobby' ? 'lobby' : S.mode === 'connecting' ? 'connecting' : 'menu';
+  if (scr === 'game') renderGame(); else if (scr === 'lobby') renderLobby(); else if (scr === 'connecting') renderConnecting(); else renderMenu();
+  lastScreen = scr;
+}
+
+// ---------- Menu ----------
+let setup = null;
+function defaultSetup() {
+  try { const s = JSON.parse(store.get('rummy-setup')); if (s && s.seats) return s; } catch (e) {}
+  return { seats: [{ name: myName() || 'Я', type: 'local' }, { name: 'Боря', type: 'bot1' }, { name: 'Вера', type: 'bot1' }] };
+}
+function renderMenu() {
+  app.classList.remove('game');
+  setup ||= defaultSetup();
+  let saved = null; try { saved = JSON.parse(store.get('rummy-local')); } catch (e) {}
+  const canResume = saved && saved.G && !saved.G.over;
+  const joinCode = (location.hash.match(/^#join-([A-Z0-9]{5})$/i) || [])[1];
+  app.innerHTML = `<div class="screen"><div class="menu">
+    <div class="brand">
+      <div class="row">${[[7, 1], [8, 2], [9, 3]].map(([n, c]) => `<div style="--tw:46px">${tileHTML(c * 13 + n - 1, 'locked')}</div>`).join('')}</div>
+      <div><h1>Румми</h1><p>Собирайте ряды и группы, перекладывайте фишки на столе и избавьтесь от своих первыми.</p></div>
+    </div>
+    ${joinCode ? `<div class="card"><h2>Вас пригласили в комнату <span class="code">${joinCode.toUpperCase()}</span></h2>
+      <div class="row"><input id="jName" placeholder="Ваше имя" maxlength="20" value="${esc(myName())}"><button class="primary" id="jGo">Войти в игру</button></div><div class="note err" id="jErr"></div></div>` : ''}
+    <div class="cards">
+      <div class="card">
+        <h2>На этом устройстве</h2>
+        <p>Против компьютера или по очереди с друзьями за одним iPad. Перед ходом каждого игрока экран закрывается, чтобы никто не подсмотрел.</p>
+        <div class="seats" id="seats">${setup.seats.map((s, i) => `<div class="seat">
+          <input data-i="${i}" class="sName" value="${esc(s.name)}" maxlength="16" aria-label="Имя игрока ${i + 1}">
+          <select data-i="${i}" class="sType" aria-label="Кто играет">
+            <option value="local" ${s.type === 'local' ? 'selected' : ''}>Человек</option>
+            <option value="bot0" ${s.type === 'bot0' ? 'selected' : ''}>Комп. новичок</option>
+            <option value="bot1" ${s.type === 'bot1' ? 'selected' : ''}>Комп. знаток</option>
+            ${i > 0 ? '<option value="none">— убрать —</option>' : ''}
+          </select></div>`).join('')}</div>
+        <div class="row">${setup.seats.length < 4 ? '<button id="addSeat">+ Игрок</button>' : ''}<button class="primary" id="startLocal">Начать партию</button></div>
+        ${canResume ? '<button id="resume">Продолжить прошлую партию</button>' : ''}
+      </div>
+      <div class="card">
+        <h2>Онлайн с друзьями</h2>
+        <p>Создайте комнату и отправьте ссылку. Друзья откроют её на своих телефонах и сядут за ваш стол, без регистрации. Можно добавить и компьютерных игроков.</p>
+        <input id="hName" placeholder="Ваше имя" maxlength="20" value="${esc(myName())}">
+        <div class="row"><button class="primary" id="host">Создать комнату</button></div>
+        <div class="row"><input id="code" placeholder="Код комнаты" maxlength="5" style="width:130px;text-transform:uppercase"><button id="join">Войти по коду</button></div>
+        <div class="note err" id="hErr"></div>
+      </div>
+    </div>
+    <div class="row"><button id="rules">Правила игры</button></div>
+  </div></div>`;
+  const $ = s => app.querySelector(s);
+  app.querySelectorAll('.sName').forEach(el => el.oninput = () => { setup.seats[+el.dataset.i].name = el.value; });
+  app.querySelectorAll('.sType').forEach(el => el.onchange = () => {
+    const i = +el.dataset.i;
+    if (el.value === 'none') setup.seats.splice(i, 1); else setup.seats[i].type = el.value;
+    renderMenu();
+  });
+  $('#addSeat') && ($('#addSeat').onclick = () => { setup.seats.push({ name: ['Боря', 'Вера', 'Глеб', 'Даша'][setup.seats.length] || 'Игрок', type: 'bot1' }); renderMenu(); });
+  $('#startLocal').onclick = () => {
+    if (setup.seats.length < 2) return;
+    store.set('rummy-setup', JSON.stringify(setup));
+    if (setup.seats[0].type === 'local') store.set('rummy-name', setup.seats[0].name.trim());
+    const seats = setup.seats.map((s, i) => ({ name: s.name.trim() || `Игрок ${i + 1}`, kind: s.type === 'local' ? 'local' : 'bot', level: s.type === 'bot0' ? 0 : 1 }));
+    if (!seats.some(s => s.kind === 'local')) { toast('Нужен хотя бы один человек за столом.'); return; }
+    newGame(seats);
+    S = { mode: 'local', me: seats.findIndex(s => s.kind === 'local'), view: null, preview: null, curtain: false };
+    W = null; afterChange();
+  };
+  $('#resume') && ($('#resume').onclick = () => { G = saved.G; S = { mode: 'local', me: saved.me || 0, view: null, preview: null, curtain: false }; W = null; afterChange(); });
+  $('#rules').onclick = showRules;
+  const hostGo = async () => {
+    const name = ($('#hName').value || '').trim(); if (!name) { $('#hErr').textContent = 'Введите имя, его увидят другие игроки.'; return; }
+    store.set('rummy-name', name);
+    S.mode = 'connecting'; S.connMsg = 'Создаю комнату…'; render();
+    try { await hostRoom(name); S.mode = 'host-lobby'; render(); }
+    catch (e) { const m = netError(e); try { net?.peer?.destroy(); } catch (x) {} net = null; S.mode = null; render(); app.querySelector('#hErr').textContent = m; }
+  };
+  $('#host').onclick = hostGo;
+  const joinGo = async (code, name, errEl) => {
+    code = (code || '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{5}$/.test(code)) { app.querySelector(errEl).textContent = 'Код состоит из 5 букв и цифр.'; return; }
+    if (!name) { app.querySelector(errEl).textContent = 'Введите имя, его увидят другие игроки.'; return; }
+    store.set('rummy-name', name);
+    S.mode = 'connecting'; S.connMsg = 'Подключаюсь к комнате ' + code + '…'; render();
+    try { await joinRoom(code, name); if (S.mode === 'connecting') { S.mode = 'guest-lobby'; render(); } }
+    catch (e) { const m = netError(e); try { net?.peer?.destroy(); } catch (x) {} net = null; S.mode = null; render(); const el = app.querySelector(errEl) || app.querySelector('#hErr'); if (el) el.textContent = m; }
+  };
+  $('#join').onclick = () => joinGo($('#code').value, ($('#hName').value || '').trim(), '#hErr');
+  $('#jGo') && ($('#jGo').onclick = () => joinGo(joinCode, ($('#jName').value || '').trim(), '#jErr'));
+}
+function renderConnecting() {
+  app.classList.remove('game');
+  app.innerHTML = `<div class="screen"><div class="menu"><div class="card"><h2>${esc(S.connMsg || 'Соединяю…')}</h2><p>Обычно это занимает пару секунд.</p><div class="row"><button id="cancel">Отмена</button></div></div></div></div>`;
+  app.querySelector('#cancel').onclick = leaveToMenu;
+}
+function renderLobby() {
+  app.classList.remove('game');
+  const host = net && net.role === 'host';
+  const list = host ? net.lobby : (net ? net.list : []);
+  const link = net ? location.origin + location.pathname + '#join-' + net.code : '';
+  app.innerHTML = `<div class="screen"><div class="menu"><div class="card">
+    <div class="lbl">Комната</div>
+    <div class="code">${net ? net.code : ''}</div>
+    ${host ? `<p>Отправьте эту ссылку друзьям. Когда все соберутся, нажмите «Начать».</p>
+      <div class="linkbox"><span id="lnk">${esc(link)}</span><button id="copy">Копировать</button></div>` : `<p>Вы за столом. Ждём, пока хозяин комнаты начнёт партию.</p>`}
+    ${S.lost ? '<p class="err">Связь с хозяином комнаты потеряна.</p>' : ''}
+    <div class="lbl">За столом</div>
+    <div class="plist">${list.map((p, i) => `<div class="pl"><span>${esc(p.name)}</span><small>${p.kind === 'you' ? 'хозяин' : p.kind === 'bot' ? (p.level ? 'компьютер, знаток' : 'компьютер, новичок') : 'по сети'}</small>
+      ${host && p.kind === 'bot' ? `<button data-rm="${i}" class="iconbtn" aria-label="Убрать">✕</button>` : ''}</div>`).join('')}</div>
+    ${host ? `<div class="row">${list.length < 4 ? '<button id="addBot">+ Компьютер</button>' : ''}<button class="primary" id="go" ${list.length < 2 ? 'disabled' : ''}>Начать партию</button></div>` : ''}
+    <div class="row"><button id="leave">Выйти</button></div>
+  </div></div></div>`;
+  const $ = s => app.querySelector(s);
+  $('#leave').onclick = leaveToMenu;
+  if (!host) return;
+  $('#copy').onclick = async () => {
+    try { await navigator.clipboard.writeText(link); toast('Ссылка скопирована.'); }
+    catch (e) { const r = document.createRange(); r.selectNodeContents($('#lnk')); const sl = getSelection(); sl.removeAllRanges(); sl.addRange(r); toast('Выделил ссылку, скопируйте её.'); }
+  };
+  $('#addBot') && ($('#addBot').onclick = () => { const names = ['Боря', 'Вера', 'Глеб']; const used = new Set(net.lobby.map(s => s.name)); net.lobby.push({ name: names.find(n => !used.has(n)) || 'Компьютер', kind: 'bot', level: 1, connected: true }); broadcastLobby(); render(); });
+  app.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { net.lobby.splice(+b.dataset.rm, 1); broadcastLobby(); render(); });
+  $('#go').onclick = () => {
+    const seats = net.lobby.map(s => ({ name: s.name, kind: s.kind, level: s.level, token: s.token, connected: s.connected }));
+    newGame(seats);
+    for (const [c, seat] of net.conns) { const pi = net.lobby.indexOf(seat); if (pi >= 0) net.conns.set(c, pi); }
+    S.mode = 'host'; S.me = 0; W = null;
+    afterChange();
+  };
+}
+
+// ---------- Game ----------
+function renderGame() {
+  app.classList.add('game');
+  if (S.mode !== 'guest') refreshLocal();
+  const v = S.view; if (!v) return;
+  ensureW();
+  const mine = myTurn();
+  const table = mine ? W.table : (S.preview && S.preview.turnId === v.turnId ? S.preview.table : v.table);
+  const rack = sortRack(mine ? W.rack : v.rack);
+  const cur = v.players[v.turn];
+  const fromRack = mine ? new Set(W.baseRack) : new Set();
+  const lastSet = new Set(v.last || []);
+  // first-meld progress
+  let meldPts = 0;
+  if (mine && !v.melded) { const orig = new Set(W.baseTable.flat()); W.table.forEach(s => { if (!s.some(id => orig.has(id))) { const a = analyze(s); if (a) meldPts += a.pts; } }); }
+  const anyBad = mine && W.table.some(s => !analyze(s));
+  const ch = mine && changed();
+  let msg;
+  if (v.over) msg = `<b>${esc(v.players[v.over.winner].name)}</b> побеждает в этой партии.`;
+  else if (mine) msg = !v.melded
+    ? `Ваш ход. Первый выход: <b>${meldPts}</b> из 30 очков <span class="meter"><i style="width:${Math.min(100, meldPts / 30 * 100)}%"></i></span>`
+    : anyBad ? 'Ваш ход. Ряды с красной рамкой пока неправильные.' : ch ? 'Ваш ход. Нажмите «Готово», когда закончите.' : 'Ваш ход. Перетащите фишки на стол или возьмите фишку из банка.';
+  else msg = cur.kind === 'bot' ? `Ходит <b>${esc(cur.name)}</b> (компьютер)…` : `Ходит <b>${esc(cur.name)}</b>…` + (cur.connected === false ? ' <span class="err">(не в сети)</span>' : '');
+  app.innerHTML = `
+    <div class="top">
+      <div class="logo">Румми</div>
+      <div class="players">${v.players.map((p, i) => `<div class="pchip ${i === v.turn && !v.over ? 'turn' : ''} ${p.connected === false ? 'off' : ''}">
+        <span class="av">${esc((p.name || '?')[0].toUpperCase())}</span><span>${esc(p.name)}<span class="you">${i === S.me ? ' (вы)' : ''}</span></span><b>${p.count}</b><small>${p.melded ? '' : 'нет выхода'}</small></div>`).join('')}</div>
+      <div class="pool" title="Фишек в банке">Банк ${v.pool}</div>
+      <div class="zoom"><button id="zOut" aria-label="Стол мельче">−</button><button id="zIn" aria-label="Стол крупнее">+</button></div>
+      <button class="iconbtn" id="menuBtn" aria-label="Меню">☰</button>
+    </div>
+    <div class="tablewrap" id="tw">
+      <div id="table" class="${mine && sel.size ? 'picking' : ''}">
+        ${table.map((s, si) => {
+          const a = analyze(s), fresh = mine && s.some(id => fromRack.has(id));
+          return `<div class="set ${a ? 'good' : 'bad'} ${fresh ? 'fresh' : ''}" data-s="${si}">${s.map(id => tileHTML(id, [sel.has(id) ? 'sel' : '', fromRack.has(id) ? 'mine' : '', !mine && lastSet.has(id) ? 'last' : '', mine && !v.melded && !fromRack.has(id) ? 'locked' : '', !mine ? 'locked' : ''].join(' '))).join('')}<button class="plus" data-plus="${si}" aria-label="Добавить сюда">+</button></div>`;
+        }).join('')}
+        ${mine ? `<div class="newset" id="newset">+ Новый ряд</div>` : ''}
+      </div>
+      ${!table.length && !mine ? '<div class="empty-hint">Стол пока пуст.</div>' : ''}
+    </div>
+    <div class="bottom">
+      <div class="status"><div class="msg">${msg}</div>
+        <div class="actions">${mine ? `
+          <button id="reset" ${ch ? '' : 'disabled'}>Вернуть всё</button>
+          ${ch ? `<button class="primary" id="done">Готово</button>` : `<button class="primary" id="draw">${v.pool ? 'Взять фишку' : 'Пропустить ход'}</button>`}`
+          : v.over && S.mode !== 'guest' ? '<button class="primary" id="again">Ещё партия</button>' : ''}
+          ${!mine && S.mode === 'host' && !v.over && cur.kind === 'remote' && cur.connected === false ? '<button id="takeover">Пусть ходит компьютер</button>' : ''}
+        </div>
+      </div>
+      <div class="rackzone" id="rackzone">
+        <div class="rackbar"><span>Ваши фишки: ${rack.length}<span class="log"> · ${v.log && v.log.length ? esc(v.log[v.log.length - 1]) : ''}</span></span>
+          <span class="sorts"><button data-sort="color" aria-pressed="${sortMode === 'color'}">По цвету</button><button data-sort="number" aria-pressed="${sortMode === 'number'}">По числу</button></span></div>
+        <div id="rack">${rack.map(id => tileHTML(id, [sel.has(id) ? 'sel' : '', v.drawn === id && !mine ? '' : v.drawn === id ? 'drawn' : '', !mine ? 'locked' : ''].join(' '))).join('')}</div>
+      </div>
+    </div>`;
+  bindGame();
+  if (S.curtain) showCurtain();
+  if (v.over && !S.resultsShown) { S.resultsShown = v.turnId; showResults(); }
+  if (!v.over) S.resultsShown = 0;
+  if (S.lost) toast('Связь с хозяином комнаты потеряна.');
+}
+function bindGame() {
+  const $ = s => app.querySelector(s);
+  $('#menuBtn').onclick = showMenu;
+  const zoom = d => { tableSize = Math.max(22, Math.min(64, tableSize + d)); store.set('rummy-zoom', tableSize); applyZoom(); };
+  $('#zOut').onclick = () => zoom(-4); $('#zIn').onclick = () => zoom(4);
+  app.querySelectorAll('[data-sort]').forEach(b => b.onclick = () => { sortMode = b.dataset.sort; store.set('rummy-sort', sortMode); render(); });
+  $('#reset') && ($('#reset').onclick = () => { W.table = deep(W.baseTable); W.rack = W.baseRack.slice(); sel.clear(); render(); sendPreview(); });
+  $('#draw') && ($('#draw').onclick = () => act('draw', {}));
+  $('#done') && ($('#done').onclick = () => {
+    const tbl = W.table.filter(s => s.length);
+    if (S.mode !== 'guest') { const err = validate(S.me, tbl.map(normalize), W.rack); if (err) { toast(err); return; } }
+    act('commit', { table: tbl, rack: W.rack.slice() });
+  });
+  $('#again') && ($('#again').onclick = () => { newGame(G.players.map(p => ({ name: p.name, kind: p.kind, level: p.level, token: p.token, connected: p.connected })), true); W = null; S.resultsShown = 0; afterChange(); });
+  $('#takeover') && ($('#takeover').onclick = () => { const p = G.players[G.turn]; p.kind = 'bot'; p.level = 1; logMsg(`${p.name}: дальше ходит компьютер.`); afterChange(); });
+  app.querySelectorAll('[data-plus]').forEach(b => b.onclick = e => { e.stopPropagation(); if (sel.size) moveTiles([...sel], { kind: 'set', s: +b.dataset.plus, index: 1e9 }); });
+  $('#newset') && ($('#newset').onclick = () => { if (sel.size) moveTiles([...sel], { kind: 'new' }); else toast('Выберите фишки и нажмите сюда, или перетащите их.'); });
+  $('#rackzone').addEventListener('click', e => { if (e.target.closest('.tile') || e.target.closest('button')) return; if (sel.size && myTurn()) moveTiles([...sel], { kind: 'rack' }); });
+}
+
+// ---------- Drag & tap ----------
+let drag = null;
+app.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.tile'); if (!el || el.classList.contains('locked') || !myTurn()) return;
+  const id = +el.dataset.id;
+  drag = { id, x: e.clientX, y: e.clientY, started: false, pid: e.pointerId, el };
+});
+app.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.pid) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.started) {
+    if (Math.hypot(dx, dy) < 7) return;
+    drag.started = true;
+    drag.ids = sel.has(drag.id) ? [...sel] : [drag.id];
+    drag.ghost = document.createElement('div'); drag.ghost.className = 'ghost';
+    drag.ghost.innerHTML = drag.ids.map(id => tileHTML(id)).join('');
+    document.body.appendChild(drag.ghost);
+    drag.ids.forEach(id => app.querySelectorAll(`.tile[data-id="${id}"]`).forEach(t => t.classList.add('ghosted')));
+  }
+  e.preventDefault();
+  drag.ghost.style.left = e.clientX + 'px'; drag.ghost.style.top = e.clientY + 'px';
+  app.querySelectorAll('.hover').forEach(h => h.classList.remove('hover'));
+  const tgt = dropTarget(e.clientX, e.clientY); if (tgt && tgt.el) tgt.el.classList.add('hover');
+  // auto-scroll the table while dragging near its edges
+  const tw = document.getElementById('tw'); if (tw) { const r = tw.getBoundingClientRect(); if (e.clientY < r.top + 30) tw.scrollTop -= 8; else if (e.clientY > r.bottom - 30 && e.clientY < r.bottom) tw.scrollTop += 8; }
+}, { passive: false });
+function dropTarget(x, y) {
+  const el = document.elementFromPoint(x, y); if (!el) return null;
+  const set = el.closest('.set');
+  if (set) {
+    const tiles = [...set.querySelectorAll('.tile')].filter(t => !drag || !drag.ids.includes(+t.dataset.id));
+    let index = tiles.length;
+    for (let k = 0; k < tiles.length; k++) { const r = tiles[k].getBoundingClientRect(); if (x < r.left + r.width / 2 && y < r.bottom + 6) { index = k; break; } }
+    const setIds = W.table[+set.dataset.s] || [];
+    const anchorId = tiles[index] ? +tiles[index].dataset.id : null;
+    return { el: set, kind: 'set', s: +set.dataset.s, index: anchorId === null ? 1e9 : setIds.indexOf(anchorId) };
+  }
+  if (el.closest('#newset') || (el.closest('#table') && !el.closest('.set'))) return { el: document.getElementById('newset'), kind: 'new' };
+  if (el.closest('#rackzone')) return { el: document.getElementById('rackzone'), kind: 'rack' };
+  return null;
+}
+function endDrag(e, cancel) {
+  if (!drag || e.pointerId !== drag.pid) return;
+  const d = drag; drag = null;
+  app.querySelectorAll('.hover').forEach(h => h.classList.remove('hover'));
+  if (d.started) {
+    d.ghost.remove();
+    const tgt = cancel ? null : dropTarget(e.clientX, e.clientY);
+    if (tgt) {
+      const inRack = W.rack.includes(d.ids[0]);
+      if (tgt.kind === 'rack' && d.ids.every(id => W.rack.includes(id))) { render(); return; }
+      if (tgt.kind === 'new' && !inRack && d.ids.length && W.table.some(s => s.length === d.ids.length && d.ids.every(id => s.includes(id)))) { render(); return; }
+      moveTiles(d.ids, tgt);
+    } else render();
+    return;
+  }
+  // tap: select / deselect
+  if (sel.has(d.id)) sel.delete(d.id); else sel.add(d.id);
+  render();
+}
+app.addEventListener('pointerup', e => endDrag(e, false));
+app.addEventListener('pointercancel', e => endDrag(e, true));
+
+// ---------- Overlays ----------
+let ov = null;
+function overlay(html, onBg) { closeOv(); ov = document.createElement('div'); ov.className = 'overlay'; ov.innerHTML = html; document.body.appendChild(ov); if (onBg) ov.addEventListener('click', e => { if (e.target === ov) closeOv(); }); return ov; }
+function closeOv() { ov?.remove(); ov = null; }
+function showCurtain() {
+  const p = G.players[G.turn];
+  const o = overlay(`<div class="modal" style="text-align:center"><div class="lbl">Передайте устройство</div><h2 style="margin-top:8px">Ходит ${esc(p.name)}</h2>
+    <p>Остальным лучше не смотреть на экран: сейчас откроются фишки игрока.</p><div class="row" style="justify-content:center"><button class="primary" id="ready">Я ${esc(p.name)}, показать фишки</button></div></div>`);
+  o.querySelector('#ready').onclick = () => { S.curtain = false; S.me = G.turn; closeOv(); W = null; render(); };
+}
+function showResults() {
+  const r = S.view.over;
+  const o = overlay(`<div class="modal"><div class="lbl">Партия ${S.view.round}</div><h2>${esc(r.rows[r.winner].name)} побеждает!</h2>
+    ${r.blocked ? '<p>Банк закончился, и ходов больше не было. Победил игрок с наименьшей суммой фишек.</p>' : ''}
+    <table><tr><th>Игрок</th><th class="num">Осталось</th><th class="num">Очки</th><th class="num">Всего</th></tr>
+    ${r.rows.map((x, i) => `<tr class="${i === r.winner ? 'win' : ''}"><td>${esc(x.name)}</td><td class="num">${x.left}</td><td class="num">${x.delta > 0 ? '+' : ''}${x.delta}</td><td class="num">${x.total}</td></tr>`).join('')}</table>
+    <p>Проигравшие отдают победителю сумму своих фишек, джокер стоит 30.</p>
+    <div class="row">${S.mode !== 'guest' ? '<button class="primary" id="rAgain">Ещё партия</button>' : '<span class="note">Новую партию начинает хозяин комнаты.</span>'}<button id="rClose">Закрыть</button></div></div>`, true);
+  o.querySelector('#rClose').onclick = closeOv;
+  o.querySelector('#rAgain')?.addEventListener('click', () => { closeOv(); newGame(G.players.map(p => ({ name: p.name, kind: p.kind, level: p.level, token: p.token, connected: p.connected })), true); W = null; S.resultsShown = 0; afterChange(); });
+}
+function showMenu() {
+  const online = S.mode === 'host' || S.mode === 'guest';
+  const o = overlay(`<div class="modal"><h2>Меню</h2>
+    ${online && net ? `<p>Комната <b class="code" style="font-size:18px">${net.code}</b></p>` : ''}
+    <div class="row" style="justify-content:flex-start;flex-direction:column;align-items:stretch">
+      <button id="mRules">Правила игры</button>
+      ${online && S.mode === 'host' ? '<button id="mLink">Скопировать ссылку на комнату</button>' : ''}
+      <button id="mExit">${online ? 'Выйти из комнаты' : 'Выйти в главное меню'}</button>
+      <button class="primary" id="mBack">Вернуться к игре</button>
+    </div>
+    ${!online ? '<p class="note">Партия сохраняется на этом устройстве, её можно продолжить позже.</p>' : '<p class="note">Если хозяин комнаты выйдет, партия закончится для всех.</p>'}</div>`, true);
+  o.querySelector('#mBack').onclick = closeOv;
+  o.querySelector('#mRules').onclick = showRules;
+  o.querySelector('#mExit').onclick = () => { closeOv(); leaveToMenu(); };
+  o.querySelector('#mLink')?.addEventListener('click', async () => { const link = location.origin + location.pathname + '#join-' + net.code; try { await navigator.clipboard.writeText(link); toast('Ссылка скопирована.'); } catch (e) { toast(link); } });
+}
+function showRules() {
+  const ex = (ids) => `<div class="ex">${ids.map(id => tileHTML(id, 'locked')).join('')}</div>`;
+  const o = overlay(`<div class="modal"><h2>Правила</h2>
+    <p>В игре 106 фишек: числа от 1 до 13 четырёх цветов, каждая по две штуки, и 2 джокера. Каждому раздают по 14. Цель — первым выложить все свои фишки.</p>
+    <p><b>Ряд</b> — три и больше подряд идущих числа одного цвета:</p>${ex([2 * 13 + 3, 2 * 13 + 4, 2 * 13 + 5, 2 * 13 + 6])}
+    <p><b>Группа</b> — три или четыре одинаковых числа разных цветов:</p>${ex([7, 13 + 7, 39 + 7])}
+    <p><b>Джокер</b> заменяет любую фишку.</p>
+    <ul>
+      <li><b>Первый выход</b>: сумма выложенных за ход рядов и групп должна быть не меньше 30 очков, только из своих фишек.</li>
+      <li>Потом можно добавлять фишки к рядам на столе, разбивать и перекладывать их как угодно. К концу хода все ряды на столе должны быть правильными, а фишки со стола нельзя забирать себе.</li>
+      <li>Если нечего выложить, возьмите одну фишку из банка, и ход переходит дальше.</li>
+      <li>Кто первым выложил все фишки, побеждает. Остальные отдают ему сумму своих фишек, джокер стоит 30.</li>
+    </ul>
+    <p><b>Как ходить:</b> перетаскивайте фишки пальцем или мышью. Можно и по-другому: нажмите на фишки, чтобы выбрать, затем нажмите «+ Новый ряд» или «+» в конце нужного ряда. «Вернуть всё» отменяет изменения этого хода.</p>
+    <div class="row"><button class="primary" id="ok">Понятно</button></div></div>`, true);
+  o.querySelector('#ok').onclick = closeOv;
+}
+let toastT = 0;
+function toast(m) {
+  document.querySelectorAll('.toast').forEach(t => t.remove());
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.appendChild(t);
+  clearTimeout(toastT); toastT = setTimeout(() => t.remove(), 3200);
+}
+window.addEventListener('hashchange', () => { if (!S.mode) render(); });
+window.addEventListener('beforeunload', e => { if (S.mode === 'host' && G && !G.over) { e.preventDefault(); e.returnValue = ''; } });
+
+render();
+})();
+</script>
+</body>
+</html>
